@@ -8,7 +8,8 @@ const QUICK_PROMPTS = [
   "/start",
   "/lesson Greetings and introductions",
   "/quiz",
-  "/correct Tôi thích đi ăn phở vào ngày mai hôm qua"
+  "/correct Tôi thích đi ăn phở vào ngày mai hôm qua",
+  "/reset"
 ];
 
 function messageText(message: UIMessage): string {
@@ -25,6 +26,7 @@ function messageText(message: UIMessage): string {
 export default function App() {
   const [connected, setConnected] = useState(false);
   const [input, setInput] = useState("");
+  const [notice, setNotice] = useState("");
   const endRef = useRef<HTMLDivElement | null>(null);
 
   const agent = useAgent<ChatAgent>({
@@ -47,14 +49,22 @@ export default function App() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [visibleMessages, isStreaming]);
 
-  function submit(text: string) {
+  async function submit(text: string) {
     const value = text.trim();
     if (!value || isStreaming) return;
+    if (value === "/reset") {
+      await agent.stub.resetTutorMemory();
+      clearHistory();
+      setInput("");
+      setNotice("Chat history and tutor memory reset.");
+      return;
+    }
     sendMessage({
       role: "user",
       parts: [{ type: "text", text: value }]
     });
     setInput("");
+    if (notice) setNotice("");
   }
 
   return (
@@ -69,8 +79,9 @@ export default function App() {
           </div>
           <p className="mt-1 text-sm text-zinc-600">
             Commands: <code>/start</code>, <code>/lesson</code>,{" "}
-            <code>/quiz</code>, <code>/correct ...</code>
+            <code>/quiz</code>, <code>/correct ...</code>, <code>/reset</code>
           </p>
+          {notice && <p className="mt-1 text-sm text-emerald-700">{notice}</p>}
         </header>
 
         <div className="mb-3 flex flex-wrap gap-2">

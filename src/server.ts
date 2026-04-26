@@ -4,11 +4,9 @@ import {
   convertToModelMessages,
   pruneMessages,
   stepCountIs,
-  streamText,
-  tool
+  streamText
 } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
-import { z } from "zod";
 
 type LearnerLevel = "beginner" | "intermediate" | "advanced";
 type LearnerGoal = "travel" | "conversation" | "business" | "exam";
@@ -57,6 +55,18 @@ export class ChatAgent extends AIChatAgent<Env, TutorState> {
     this.setState({
       ...this.state,
       profile: { level, goal },
+      updated_at: new Date().toISOString()
+    });
+    return this.state;
+  }
+
+  @callable()
+  resetTutorMemory(): TutorState {
+    this.setState({
+      profile: null,
+      known_vocab: [],
+      mistake_patterns: [],
+      last_lesson_topic: null,
       updated_at: new Date().toISOString()
     });
     return this.state;
@@ -183,91 +193,11 @@ Teaching policy:
 
 Command policy:
 ${this.getCommandInstruction(command, args)}
-
-Use tools to persist meaningful memory updates after each turn.
       `.trim(),
       messages: pruneMessages({
         messages: await convertToModelMessages(this.messages),
         toolCalls: "before-last-2-messages"
       }),
-      tools: {
-        setLearnerProfile: tool({
-          description: "Persist learner profile level and goal.",
-          inputSchema: z.object({
-            level: z.enum(["beginner", "intermediate", "advanced"]),
-            goal: z.enum(["travel", "conversation", "business", "exam"])
-          }),
-          execute: async ({ level, goal }) => {
-            this.setState({
-              ...this.state,
-              profile: { level, goal },
-              updated_at: new Date().toISOString()
-            });
-            return this.state.profile;
-          }
-        }),
-        setLastLessonTopic: tool({
-          description:
-            "Save the current lesson topic used for personalization.",
-          inputSchema: z.object({
-            topic: z.string()
-          }),
-          execute: async ({ topic }) => {
-            this.setState({
-              ...this.state,
-              last_lesson_topic: topic,
-              updated_at: new Date().toISOString()
-            });
-            return { last_lesson_topic: topic };
-          }
-        }),
-        rememberVocabulary: tool({
-          description:
-            "Store new Vietnamese vocabulary practiced in this turn.",
-          inputSchema: z.object({
-            words: z.array(z.string()).max(12)
-          }),
-          execute: async ({ words }) => {
-            const known_vocab = this.pushUniqueLimited(
-              this.state.known_vocab,
-              words,
-              100
-            );
-            this.setState({
-              ...this.state,
-              known_vocab,
-              updated_at: new Date().toISOString()
-            });
-            return {
-              stored: words.length,
-              total_known_vocab: known_vocab.length
-            };
-          }
-        }),
-        logMistakePattern: tool({
-          description:
-            "Log recurring learner mistakes such as word order or pronouns.",
-          inputSchema: z.object({
-            patterns: z.array(z.string()).max(8)
-          }),
-          execute: async ({ patterns }) => {
-            const mistake_patterns = this.pushUniqueLimited(
-              this.state.mistake_patterns,
-              patterns,
-              50
-            );
-            this.setState({
-              ...this.state,
-              mistake_patterns,
-              updated_at: new Date().toISOString()
-            });
-            return {
-              stored: patterns.length,
-              total_patterns: mistake_patterns.length
-            };
-          }
-        })
-      },
       stopWhen: stepCountIs(5),
       abortSignal: options?.abortSignal
     });
